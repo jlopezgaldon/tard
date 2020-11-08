@@ -1,0 +1,512 @@
+---
+title: "Estructura temporal (subyacente) de los tipos de interés"
+author: "Jose López Galdón"
+date: "`r Sys.Date()`"
+output: 
+  word_document
+
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+[//]: Librerías
+
+```{r Libraries, include = FALSE}
+
+library(here) # comment [//]:
+library(readr) # load csv
+library(imputeTS) # na <- mean
+library(reshape2) # melt
+library(ggplot2) # best plots
+library(skimr) # best summaries
+library(Hmisc) # correlation matrix nds
+library(corrplot) # correlation plots
+library(PerformanceAnalytics) # more correlation plots
+library(dplyr) # barlett test
+library(psych) # KMO 
+library(factoextra) # PCA
+library(FactoMineR) # PCA
+library(stats) # varimax
+library(pls) # linear regression pc
+
+```
+
+## *ABSTRACT*
+
+En el presente trabajo hemos realizado una predicción del valor del bono estadounidense a 10 años, utilzando datos de los distintos bonos americanos entre los periodos del 2 de enero de 1995 y el 30 de septiembre de 1998. Para ello utilizaremos ACP (Análisis de Componentes Princiaples) de manera que podamos corroborar la siguiente cuestión: ¿puede establecerse una estructura subyecente que sintetice y agrupe los distintos plazos en virtud de sus características comunes?
+
+***
+***
+
+## PLANTEAMIENTO
+
+El estudio de la estructura subyacente de los tipos de interés es reiterativa en la literatura financiera. Cabe citar, entre otros, el clásico artículo de Fama y Bliss de 1987 (The Information in Long-Maturity Forward Rates,The American Economic Review, Vol. 77, No. 4 ), el de Litterman y Scheinkman (Common factors affecting bond returns, Journal of fixed income, 1991) o, ya más recientes, el de Diebold, Piazzesi y Rudebusch (Modeling Bond Yields in Finance and Macroeconomics, American Economic Review 95.2, 2005), o el de Diebold y Li (Forecasting the term structure of government bond yields, Journal of Econometrics, 130.2, 2006). Puede consultarse también el paper de 2014 de Moody’s Analytics Principal Component Analysis for Yield Curve Modelling (Enlaces a un sitio externo.) o el white paper de 2009 de Novosyolov y Satchkov, Global Term Structure Modeling Using Principal Component Analysis (Enlaces a un sitio externo.).
+
+El objetivo que perseguimos en el presente trabajo es, simplemente, efectuar una comprobación empírica mediante la aplicación del ACP a un conjunto de 978 observaciones de los rendimientos de 10 bonos norteamericanos a distintos plazos entre el 2 de enero de 1995 y el 30 de septiembre de 1998. No pretendemos nada más que verificar si, tal y como plantean los estudios teóricos, puede establecerse una estructura subyecente que sintetice y agrupe los distintos plazos en virtud de sus características comunes. Para ello, deberá trabajar con el archivo ACPTIUSD.csv Vista previa del documento, disponible en la plataforma, del que deberá utilizar las 949 primeras observaciones (denominadas observaciones activas) y las 9 primeras variables (las variables activas); uno de los objetivos será emplear las observaciones 950 a 978 (llamadas observaciones suplementarias) para predecir el valor del bono a 10 años (IRS.10Y, variable suplementaria). Aparte de cubrir este objetivo, queremos asimismo tener respuesta a las siguientes preguntas:
+
+1. ¿Tiene sentido llevar a cabo, en este caso, un análisis de componentes principales? Para justificarlo, deberá llevar a cabo las pruebas que estime oportunas, como, por ejemplo el análisis de la matriz de correlaciones, el del determinante de dicha matriz, la prueba de esfericidad de Bartlett, el KMO o el MSA;
+
+2. ¿Cuántos componentes permitirían explicar, adecuadamente, la estructura subycente de los tipos de interés aquí analizados? Justifique su respuesta empleando, por ejemplo, las pruebas de la varianza explicada o del gráfico de sedimentación;
+
+3. Finalmente, ¿tiene sentido llevar a cabo una rotación de las variables subyacentes? Para responder, lleva a cabo una rotación Varimax, por ejemplo.
+
+Por último, deberá elaborar las oportunas conclusiones.
+
+***
+***
+
+## BASE DE DATOS
+
+```{r load data, include = FALSE}
+
+TIUSD <- read_delim("../data/01_raw/ACPTIUSD.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE)
+
+```
+
+[//]: Visualizamos los datos
+
+```{r view data, include = FALSE}
+
+  # Nombres de las columnas
+names(TIUSD)
+
+  # Primeras filas
+head(TIUSD)
+
+  # Últimas filas
+tail(TIUSD)
+
+  # Dimensión de la base de datos
+dim(TIUSD)
+
+```
+
+Tenemos un dataset con 978 filas y 11 variables, estas son:
+
+  - `X1`: Plazos entre el 2 de enero de 1995 y el 30 de septiembre de 1998
+  - `DEPO_1M`: Bono norteamericano a 1 mes 
+  - `DEPO_3M`: Bono norteamericano a 3 meses 
+  - `DEPO_6M`: Bono norteamericano a 6 meses 
+  - `DEPO_12M`: Bono norteamericano a 12 meses 
+  - `IRS_2Y`: Bono norteamericano a 2 años
+  - `IRS_3Y`: Bono norteamericano a 3 años
+  - `IRS_4Y`: Bono norteamericano a 4 años
+  - `IRS_5Y`: Bono norteamericano a 5 años
+  - `IRS_7Y`: Bono norteamericano a 7 años
+  - `IRS_10Y`: Bono norteamericano a 10 años
+  
+***
+***
+
+## ACONDICIONAMIENTO DEL DATASET
+
+[//]: En este apartado preparamos el dataset para su posterior trabajo, de manera que trataremos los NaN, los formatos de las variables...
+
+### Data wrangling
+
+[//]:Comenzaremos con el trato de los NaN, en nuestro caso como nos interesa trabajar con el total de la muestra sustituiremos los valores de los nulos por el valor medio, de esta manera podremos seguir trabajando con el tamaño inicial del dataset.
+
+```{r data wrangling, include = FALSE}
+
+  # A partir de 1998 perdemos los datos de los bonos a 1 mes, es por ello que utilizamos las fucnión complete.cases() para qudarnos solo con los datos sin NaN
+TIUSD_complete <-  na_mean(TIUSD)
+
+  # Podemos comprobar que es un df más reducido
+dim(TIUSD_complete)
+
+  # Generamos una nueva columna con las fechas en su correspondiente formato
+TIUSD_complete$Fechas = as.Date(TIUSD_complete$X1, format = "%d/%m/%Y")
+
+  # Nos quedamos con las columnas 2 hasta la 12, es decir, suprimimos la columna X1 de este dataset
+TIUSD_complete = TIUSD_complete[, 2:12]
+
+  # Visualizamos el resultado final
+head(TIUSD_complete, 10)
+
+```
+
+***
+
+### Data melt
+
+[//]: Una tabla está en formato largo cuando cada fila contiene un dato y el resto de las columnas son etiquetas que le dan contexto. Además de ser más claras conceptualmente, suele ser más sencillo procesar tablas en formato largo.
+
+```{r melt, include = FALSE}
+  # Utilizamos la función melt() del paquete reshape2
+data_melt = melt(TIUSD_complete, id = "Fechas")
+
+  # En vez de tener 783 filas, tendremos 783 * 10 (por cada variable) = 7830
+dim(data_melt)
+
+  # Visualizamos el resutado
+head(data_melt, 10)
+
+```
+
+Como podemos observar las primeras observaciones serán todas de los depositos a 1 mes, una vez estén todos los deósitos a 1 mes, le seguiran los de 2 meses y así sucesivcamente hasta completar todos.
+
+## ANÁLISIS EXPLORATORIO
+
+A continuación realizaremos un análisis exploratorio de nuestra base de datos, en el que analizaremos los estadísticos principales, correlaciones...
+
+```{r plot bond types}
+  
+  # Comenzamos graficando los distintos bonos y su recorrido a través del tiempo
+ggplot(data = data_melt, aes(x = Fechas, y = value,  color = variable)) +
+  geom_point(alpha = 0.3,  position = position_jitter()) + 
+    labs(y = "Tipo", colour = "Bono")
+
+```
+
+Como podemos observar los tipos de los bonos fluctuando a lo largo del tiempo debido a las distintas fases de los ciclos económicos, sin embargo, podemos ver cómo a partir de los bonos a 12 meses siguen una fluctuación distinta, lo que nos puede hacer pensar (a priori) que tenemos dos tipos de bonos, unos a corto plazo (por debajo de 12 meses) y a largo plazo (por encima de la anualidad).
+
+***
+
+### Resumen de los estadísticos
+
+En este apartado incluiremos un resumen con los estadísticos principales de cada variable:
+
+```{r TIUSD_activas, include = FALSE}
+
+  # Para ello seleccionaremos solo las observaciones activas (primeras 949) y las variables activas (las 9 primeras)
+TIUSD_activas = TIUSD_complete[1:949, 1:9]
+
+  # Comprobamos el resultado
+head(TIUSD_activas, 10)
+
+```
+
+```{r skim}
+
+  # Utilizaremos la función skim() del paquete skimr para realizar el resumen de los estadísticos
+skim(TIUSD_activas)
+
+```
+
+Tenemos 949 observaciones y 9 variables, de los depósitos a 1 mes tenemos 166 valores nulos. La media de los depósitos se sitúa entre el 5.6% y el 6.4%, conforme aumenta el plazo la desviación es mayor, esto tiene sentido porque aumenta el riesgo.
+
+***
+
+### Correlaciones
+
+```{r correlation matrix nds}
+  # Podemos utilizar la función rcorr() del paquete Hmisc, esta nos devolverá tres salidas:
+    # La primera es la matriz de correalciones
+    # La segunda son las observaciones utilizadas
+    # La última nds
+mat_corr_nds = rcorr(as.matrix(TIUSD_activas))
+mat_corr_nds
+
+```
+
+Como podemos observar en la primera salida, vemos como existe una alta correlación entre los bonos a 1 mes y los de 3 y conforme subimos el plazo, esta correlación disminuye... Sin embargo, en los bonos a más de 1 año está corralación es mucho más fuerte, por lo tanto, podemos seguir pensando en los dos grupos de bonos, los de corto plazo y los de largo.
+
+Para lograr un mejor entendimiento plotearemos la matriz de correlaciones:
+
+```{r corrplot}
+
+  # Con la función corrplot dibujamos las correlaciones, hemos utilizado el método "color" para realizar un heatmap, lo relativo a tl.__ es para modificar el texto.
+corrplot::corrplot(mat_corr_nds$r, type = "lower", order = "original", method = "color", 
+                   tl.col = "black", tl.cex = 0.7, tl.srt = 45)
+
+```
+
+En el gráfico superior podemos ver las correlaciones en forma de _heatmap_, si es azul la correlación será positiva, blanco sin correlación y rojo correlación negativa. Así, de un simple vistazo podemos ver cómo existe una alta correlación entre los bonos a más de 6 meses, lo cual nos confirma lo que hemos deducido anteriormente: Existen dos grupos diferenciados en los bonos, los de largo plazo(más de 1 año) y los de corto plazo(menos de 1 año).
+
+También podemos representar las correlaciones de la siguiente manera:
+
+```{r chart correlation}
+  # Con la siguiente función podemos observar en la diagonal principal los histogramas con sus densidades, en el triangulo superior los valores de las correlaciones y en el triangulo inferior los diagramas de puntos o scatterplots
+chart.Correlation(TIUSD_activas, histogram = TRUE, pch = 5, )
+
+```
+
+Está es otra buena manera de observar las correlaciones, y de ver cómo en los depósitos a 1 mes empeora la correlación conforme avanza el plazo, además aquí se ve de manera muy clara como es la corralción perfecta de los bonos a largo plazo, ya que se trata de una línea perfecta, parece ser que el corte entre los grupos podrá estar entre el bono a 12 meses o a 6.
+
+***
+
+### Clusters
+
+Lo último que haremos en este apartado es realizar un mapa de calor para definir los posibles grupos o clusters de manera visual:
+
+```{r clusters 2 , fig.height = 5, fig.width = 6, fig.align = 'center'}
+
+corrplot::corrplot(mat_corr_nds$r, type= "full", order = "hclust", addrect = 2,
+                   tl.col = "black", tl.cex = 0.7, tl.srt = 45)
+
+```
+
+Si establecesmos dos clusters, podemos observar que existen dos tipos de plazos:
+
+  - A corto plazo: Bonos con una duración de 1-6 meses.
+  - A largo plazo: Bonos con una duración por encima de 12 meses.
+
+Aún así, parece que encontramos una división en los bonos a 3 meses, ya que su correlación respecto al bono a 1 mes es menor. Vamos a probar con 3 clases:
+
+```{r clusters 3 , fig.height = 5, fig.width = 6, fig.align = 'center'}
+
+corrplot::corrplot(mat_corr_nds$r, type= "full", order = "hclust", addrect = 3,
+                   tl.col = "black", tl.cex = 0.7, tl.srt = 45)
+
+```
+
+Ahora podemos observar como tenemos 3 clases, con una mejor diferenciación:
+
+  - A muy corto plazo: Bonos con una duración de 1 mes.
+  - A corto-medio plazo: Bonos con una duración de 3-6 meses.
+  - A largo plazo: Bonos con una duración mayor a 1 año.
+  
+***
+***
+
+## ANÁLISIS DE COMPONENTES PRINCIPALES
+
+Una vez hemos comprendido mejor el dataset y lo tenemos listo para trabajar con el análisis de componentes principales.
+
+Comenzaremos el ACP intentando resolver a la siguiente cuestión:
+
+### ¿ Tiene sentido llevar a cabo, en este caso, un análisis de componentes principales?
+
+Para resolver a esta cuestión, tendremos que analizar las correlaciones existentes entre las distintas varibales, analizar el *determinante de la matriz de correlaciones*, el *test de esfericidad de Barlett* y el *KMO*.
+
+#### 1. Determinante de la matriz de correlaciones
+
+Cuanto más bajo sea, mayor asociación tendrán las variables entre sí, de forma que será adecuado llevar a cabo el ANFAC.
+
+El problema que tiene es que si existe una alta correlación entre las variables puede fallar, por lo que tendremos que realizar otros test.
+
+```{r det(correlation matrix), include = FALSE}
+
+  # Mediante la función det() realizaremos el cálculo de la matriz de correlaciones
+
+det(mat_corr_nds$r)
+
+```
+
+Tras el cálculo del determinante de la matriz de correlaciones obtenemos un resultado de 2.64891e-18, lo que nos indicaría una alta colinealidad, aún así realizaremos el test de esfericidad de Barlett y el KMO para comprobar.
+
+***
+
+#### 2. Test de esfericidad de Barlett
+
+Se emplea para contratar la hipótesis de que la matriz de correlaciones es una matriz identidad, $I$. Se efectúa una prueba $χ2$ a partir de una transformación del determinante de la matriz de correlaciones,$|R|$. Considerando que $|R| = 1$ si, y sólo si, $R = I$, podemos establecer la hipótesis nula indistintamente así:
+
+$$H0 : R = I$$
+
+Si se acepta la hipótesis, las variables no estarán correlacionadas, por lo que la nube de puntos en el espacio adoptaría la forma de una esfera.
+
+Tenemos que recordar que el test de esfericidad no es adecuado para más de 100 observaciones.
+
+```{r Barlett test, include = FALSE}
+
+  # Como el test de esfericidad no es adecuado para más de 100 observaciones, realizaremos una muestra al azar de 99 observaciones y realizaremos el test de barlett sobre dicha muestra
+muestra_barlett <- TIUSD_activas[sample(nrow(TIUSD_activas), size = 99, replace = T), ]
+muestra_barlett
+
+  # Mediante la función barlett.test() de la librería dplyr realizaremos el test de esfericidad
+bartlett.test(muestra_barlett)
+
+```
+
+Tras el cálculo del test obtenemos un p-value de 2.2e-16, por lo tanto rechazamos la hipótesis nula lo que indicará presencia de asociación entre las variables, estando en consecuencia plenamente justificado el empleo del ANFAC.
+
+***
+
+#### 3. Índice de KMO de Kaiser-Meyer-Olkin. 
+
+Es una medida de adecuaciÓn de la muestra; este índice permite comparar las magnitudes de los coeficientes de correlación observados con las magnitudes de los coeficientes de correlación parcial.
+
+Valores bajos del índice KMO (por debajo de 0.7) desaconsejan el empleo del ANFAC (esto ocurrirá cuando la suma de todos los coeficientes de determinación parciales sea pequeña en relación a la suma de todos los coeficientes de determinación), dado que las correlaciones entre pares de variables no pueden explicarse por el resto de variables.
+
+```{r KMO, include = FALSE}
+  
+  # Para el cálculo del índice de KMO utilizaremos la función KMO de la librería pysch, podremos darle como parámetro una matriz de correlaciones o un dataset, del cual sacará la matriz de correlaciones
+KMO(TIUSD_activas)
+
+```
+
+Tras realizar el cáclulo del índice de KMO obtenemos una puntuación general de 0.87, por lo que se aconseja el uso del ACP.
+
+#### CONCLUSIÓN:
+
+**Tras realizar el cálculo del determinante de la matriz de correlaciones, el test de esfericidad y el índice de KMO determinamos que es adecuado realizar el Análisis de Componentes Principales.**
+
+***
+
+### ¿Cuántos componentes permitirían explicar, adecuadamente, la estructura subycente de los tipos de interés aquí analizados?
+
+Para saber cuántos componentes permiten explicar la estructura subyacente de los tipos de interés analizados, recordemos que son desde los bonos a 1 mes hasta bonos a 7 años.
+
+```{r PCA graph of variables}
+  
+  # Mediante la función PCA() del paquete FactoMiner obtenemos el círculo de dimensiones
+acp = PCA(X = TIUSD_activas, graph = T)
+
+```
+
+Podemos observar cómo a partir de dos dimensiones nuevas podemos explicar una gran parte de los datos, en concreto la Dim 1 explica el 80.49% de la varianza mientras que la Dim 2 explica el 17.85%, por lo que con dos dimensiones somos capaces de explicar el 98.34%.
+
+Podemos observar cómo los depósitos a corto plazo son más explicados por la segunda dimensión, sobre todo el bono a 1 mes, mientras que los que són más largos tienen más explicación de la Dim 1.
+
+```{r PCA eigenvalues}
+
+  # Obtenemos los autovalores (eig)
+acp$eig
+
+```
+Si obtenemos los autovalores de ACP podemos observar lo que comentabamos anterioremnte, como con 2 componentes (Dim 1 y Dim 2) somo capaces de explicar el 98.34513% de la varianza acumulada, y cómo añadiendiendo componente a componente somos capaces de explicar el 100%. Aún así, como esos saltos no son muy grandes, no interesará añadir estos componentes, ya que compliran más el modelo sin proporcionarnos una gran explicación.
+
+Esto lo podemos representar gráficamente:
+
+```{r scree plot}
+
+  # Con la función fviz_eig() del paquete factoextra podemos representar el gráfico de sedimentación, para comprender cuánto explica cada componente
+fviz_eig(acp, addlabels = T, barfill = "steelblue2") +
+  labs(title = "Grafico de sedimentacion", x = "Dimensiones", y = "% Varianza explicada") +
+  theme_grey()
+
+```
+
+De esta manera, podemos visualizar mejor lo que comentabamos anteriormente. Así, el componente 1 es el más importante, seguido del 2 y los demás no aparton casí información. Existen dos reglas para la selección de componentes: la primera se basa en seleccionar aquellos componentes que superen 1/n, es decir, tenemos 9 variables, por lo que cualquier dimensión que explique más de 1/9 de la varianza la rentendremos, en este caso, el umbral si sitúa en 11,11%, por lo tanto, seleccionaríamos las dos primeras dimensiones, pero no la tercera. La otra es la regla del codo, que establece la selección dónde se produzca un mayor cambio de ángulo, en este caso podríamos estaría entre las dimensiones 2-3 o 3-4.
+
+
+También podemos anaizar lo que aporta cada bono a las dimensiones:
+
+```{r var}
+  
+  # Con get_pca_var() del paquete factoextra podemos obtener las contribuciones de cada variable a las dimensiones
+var <- get_pca_var(acp)
+var$contrib
+
+```
+
+Cómo podemos obserar, la Dim.1 está fuertemente explicada por los bonos por encima de 6 meses, mientras que la Dim.2 está explicada por los bonos a 1 y 3 meses. Esto confirma, la hipótesis inicial de los dos grupos o clases de bonos. Para un mejor entendimiento lo graficaremos:
+
+```{r variable cos2 for Dim 1}
+
+  # Con esta función podemos observar la explicación de cada variable a los componentes principales
+fviz_contrib(acp, choice = "var", axes = 1, fill = "steelblue2") +
+  labs(title = "Contriución de las variables de la DIM. 1", x = "Variables", y = "Contribución") +
+  theme_grey()
+
+```
+
+Como hemos comentado anteriormente, la Dim 1 está fuertemente explicada por los bonos por encima de 6 meses, mientras que los bonos a corto plazo (1-3 meses) no influyen en está dimensión, sin embargo en la dimensión 2, ocurre lo contrario, está explicada por los bonos a corto plazo.
+
+```{r variable cos2 for Dim 2}
+
+  # Con esta función podemos observar la explicación de cada variable a los componentes principales
+fviz_contrib(acp, choice = "var", axes = 2, fill = "steelblue2") +
+  labs(title = "Contriución de las variables de la DIM. 1", x = "Variables", y = "Contribución") +
+  theme_grey()
+
+```
+En ambos casos la línea roja representa la explicación media, por lo tanto, aquellas barras que la superen explicarán más que la media.
+
+#### CONCLUSIÓN:
+
+**Podemos concluir que tras el cálculo de Análisis de Componentes principales podemos afirmar que con dos componentes somos capaces de explicar el 98,34% de la varianza, lo que significa, explicar de manera adecuada la estructura de los tipos de interés analizados. Además, hemos comporobado cómo la duración de estos bonos afecta a la contribución de dichas compentes.**
+
+***
+
+## ¿Tiene sentido llevar a cabo una rotación de las variables subyacentes?
+
+La rotación factorial pretende seleccionar la solución más sencilla e interpretable, siempre siguiendo el criterio de parsimonia. En síntesis, consiste en hacer girar los ejes de coordenadas, que representan a los factores, hasta conseguir que se aproximen al máximo a las variables en que están saturados.
+
+**Método Varimax**: Introducido por Kaiser en 1958, se basa en la determinación de la *simplicidad* de un factor, medida por la varianza de los cuadrados de sus saturaciones en las variables observables.
+
+```{r varimax, include = FALSE}
+
+varimax(var$cor)
+
+```
+
+Podemos observar que si realizamos una rotación de las variables, las varianzas explicadas modifican, la dimensión 1 pasaría a expliar el 65.4% por lo que reduciría 15 puntos básicos, mientras que la Dim 2 aumentaría hasta explicar el 31.8%. En este caso no nos interesería realizar la rotación ya que explicaríamos menos varianza, recordemos que sin la rotación eramos capaces de explicar el 98.34513% con dos dimensiones, mientras que ahora explicamos el 97.2% de la varianza con las mismas dimensiones.
+
+#### CONCLUSIÓN:
+
+**Como no experimentamos ningún crecimiento de la varianza explicada, en este caso, no nos interesa realizar la rotación de las variables subyacentes.**
+
+***
+***
+
+## PREDICCIÓN DEL BONO A 10 AÑOS
+
+El objetivo es predecir el bono a 10 años estadounidense, para ello elaboraremos un modelo de regresión de componentes principales, en nuestro caso, con 2 componentes, tal y como hemos comprobado anteriormente.
+
+[//]: Para elaborar la predicción, estableceremos una muestra de *training* asociada a las observaciones activas, mientras que la de *test* será la de observaciones suplementarias.
+
+```{r test & training, include = FALSE}
+
+  # Establecemos como dataset de entrenamiento las osbservaciones activas sin NaN
+train = TIUSD_complete[1:949, 1:10]
+train
+
+
+  # Para el test seleccionaremos las observaciones suplementarias
+test = TIUSD_complete[950:978, 1:10]
+test
+
+```
+
+```{r pcr("IRS 10Y" ~ .)}
+
+  # Utilizamos la función pcr() del paquete pls para generar un modelo de componentes principales.
+modelo_ccpp <- pcr(formula = `IRS 10Y` ~ ., data = train, ncomp = 2)
+      # Nuestra variable explicada serán los bonos a 10 años en función de los demás bonos, con el dataset de training y 2 componentes
+
+summary(modelo_ccpp)
+
+```
+
+[//]: Por último, testeamos para calcular el MSE (Error Medio Cuadrático):
+
+```{r MSE, include = FALSE}
+
+  # Generamos la predicción del modelo pero con la base de datos de test
+pred <- predict(modelo_ccpp, newdata = test, ncomp = 2)
+
+  # Creamos un dataframe para comparar la predicción con los datos reales
+cbind(pred, test$`IRS 10Y`)
+                    
+
+  # Calculamos el MSE
+MSE <- mean((test$`IRS 10Y` - pred)^2)
+MSE
+
+```
+
+[//]: Por lo tanto, nuestro MSE es de 0.003004387.
+
+***
+***
+
+## CONCLSUIONES FINALES
+
+Para concluir este informe podemos confirmar que puede establecerse una estructura subyecente que sintetice y agrupe los distintos plazos en virtud de sus características comunes, de manera que podemos con predecir con gran exactitud el valor futuro de los bonos norteamericanos a 10 años con tan solo 2 componentes principales, lo que facilita su trabajo.
+Respondiendo a las cuestiones principales, recordemos que son:
+
+1.	¿Tiene sentido llevar a cabo, en este caso, un análisis de componentes principales? Para justificarlo, deberá llevar a cabo las pruebas que estime oportunas, como, por ejemplo el análisis de la matriz de correlaciones, el del determinante de dicha matriz, la prueba de esfericidad de Bartlett, el KMO o el MSA;
+
+*Definitavemente tiene sentido, ya que tras realizar los respectivos test como el determinante de la matriz, la prueba de esfericidad de Barlett o el índice KMO Podemos concluir que se puede realizar un análisis de componentes principales de manera adecuada.*
+
+2.	¿Cuántos componentes permitirían explicar, adecuadamente, la estructura subycente de los tipos de interés aquí analizados? Justifique su respuesta empleando, por ejemplo, las pruebas de la varianza explicada o del gráfico de sedimentación;
+
+*Como hemos visto durante el trabajo, trabajando con tan solo dos componentes somos capaces de explicar el más del 98% de la varianza de los datos.*
+
+3.	Finalmente, ¿tiene sentido llevar a cabo una rotación de las variables subyacentes? Para responder, lleva a cabo una rotación Varimax, por ejemplo.
+
+*En nuestro caso, la rotación de las variables subyacentes no aporta ninguna mejora a la varianza explicada, por lo tanto, desaconsejamos la rotación.*
+
+***
+***
+
+## Referencias
+
+López Zafra, J.M. EL ANÁLISIS DE COMPONENTES PRINCIPALES. *Técnicas de Agrupación y Reducción de la Dimensión*.
+
+López Zafra, J.M. EL ANÁLISIS FACTORIAL. *Técnicas de Agrupación y Reducción de la Dimensión*.
+
