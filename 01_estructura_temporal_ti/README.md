@@ -26,7 +26,7 @@ Por último, deberá elaborar las oportunas conclusiones.
 	- 01_raw <- Immutable input data
 
 
-- html <- html of the rmd.
+- pdf <- pdf of the rmd.
 
 - rmd <- r markdowns.
 
