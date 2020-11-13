@@ -30,5 +30,7 @@ Por último, deberá elaborar las oportunas conclusiones.
 
 - rmd <- r markdowns.
 
+- solution <- html with the solution of the exercise.
+
 
 
