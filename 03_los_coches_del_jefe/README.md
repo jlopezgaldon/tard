@@ -24,6 +24,8 @@ Así pues, prepare un informe de 5 páginas justificando qué características h
 
 - pdf <- pdf of the rmd.
 
+- references <- additional information
+
 - rmd <- r markdowns.
 
 - solution <- html with the solution of the exercise.
