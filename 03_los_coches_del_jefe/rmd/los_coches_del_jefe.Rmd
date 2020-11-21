@@ -1,0 +1,434 @@
+---
+title: "Los Coches del Jefe"
+subtitle: "Informe previo"
+author: "Jose López"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(knitr::opts_chunk$set(echo = FALSE, dpi = 500, fig.align = "center", include = FALSE))
+```
+
+[//]: Librerías
+
+```{r Libraries, include = FALSE}
+
+library(here) # comment [//]:
+library(haven) # load sav
+library(dplyr)
+library(magrittr)
+library(ggplot2) # best plots
+library(skimr) # best summaries
+library(corrplot) # correlation plots
+
+```
+
+## *ABSTRACT*
+En el presente trabajo se pretende realizar un análisis exploratorio de la base de datos `tterreno.sav` con el objetivo de comprender mejor el contenido de la misma, de manera que seamos capaces de seleccionar aquellas características que consideremos más relevantes a la hora discriminar los vehículos, además de comprender qué tipos de vehículos son los que posee nuestro jefe.
+
+***
+***
+
+## PLANTEAMIENTO
+
+El archivo `tterreno.sav` contiene información acerca de 125 vehículos de todo terreno clásicos. Tan clásicos, que sus precios vienen expresados en pesetas, que era la moneda oficial del Reino de España antes de la entrada en vigor del euro. En su afán como coleccionista, el dueño del *family office* en el que ud. trabaja los ha comprado todos y ha recogido, además, información relevante de ellos, expresada en las variables de las que tiene información en el documento `TTerreno-variables.pdf` (ubicado en la carpeta *references*).
+
+El dueño del *family office*, al que ud. reporta, quiere dividir los todo-terreno en las distintas propiedades que tiene. Dado que cuenta con hasta 10 lugares en los que podría conservar los vehículos, su trabajo consiste en asignar de la forma más eficiente y consistente los distintos vehículos, agrupándolos en virtud de las características que ud. considere oportunas. Debe por tanto informarse acerca de qué características pueden ser relevantes y cuáles no para el trabajo a realizar. Ser la persona de confianza del dueño tiene esas cosas, a veces no hay más remedio que entrar a estudiar cosas para las que ud. no se ha formado.
+
+Una vez conocidas y justificadas cuáles son las características sobre las que va a trabajar, deberá explorar a qué datos se enfrenta, siempre con la mente puesta en la segmentación que deberá llevar a cabo más adelante.
+
+Así pues, prepare un informe de 5 páginas justificando qué características ha considerado relevantes, por qué ha rechazado, si acaso, algunas otras (esto le llevará no más de una página) y describa, asimismo, en un máximo de 4 páginas adicionales y sin perder la perspectiva de la segmentación que más adelante llevará a cabo, las características de los vehículos que su jefe ha comprado.
+
+*Continuará*.
+
+***
+***
+
+## BASE DE DATOS
+
+```{r load data}
+
+raw_data <- read_sav("../data/01_raw/tterreno.sav")
+
+raw_data <- as.data.frame(raw_data)
+
+```
+
+[//]: Convertimos los tipos de columnas...
+
+```{r type columns}
+
+  # Pasamos a factor o numérico las siguientes columnas
+raw_data$marca <- as.factor(raw_data$marca)
+raw_data$cilindro <- as.numeric(raw_data$cilindro)
+raw_data$plazas <- as.numeric(raw_data$plazas)
+raw_data$acel2 <- as.factor(raw_data$acel2)
+
+```
+
+[//]: Visualizamos los datos
+
+```{r view data}
+
+  # Nombres de las columnas
+names(raw_data)
+
+  # Visualizamos el dataset
+head(raw_data, 10)
+tail(raw_data, 10)
+
+  # Dimensión de la base de datos
+dim(raw_data)
+
+```
+
+Tenemos un dataset con 125 vehículos y 15 variables, estas son:
+
+  - `marca`: Marca del vehículo, siendo:
+    - **1**: ASIA MOTORS
+    - **2**: CHEVROLET
+    - **3**: DAHIATSU
+    - **4**: FORD
+    - **5**: JEEP
+    - **6**: KIA
+    - **7**: LADA
+    - **8**: LAND ROVER
+    - **9**: MERCEDES
+    - **10**: MITSUBISHI
+    - **11**: NISSAN
+    - **12**: OPEL
+    - **13**: SSANGYONG
+    - **14**: SUZUKI
+    - **15**: TATA
+    - **16**: TOYOTA
+    - **17**: UAZ
+  - `modelo`: Modelo del vehículo en cuestión 
+  - `pvp`: Precio de venta del vehículo   
+  - `cilindro`: Número de cilindros 
+  - `cc`: Centímetros cúbicos 
+  - `potencia`: Potencia del TT medida en cv
+  - `rpm`: Revoluciones por minuto
+  - `peso`: Peso del vehículo en kg
+  - `plazas`: Número de plazas del vehículo
+  - `cons90`: Consumo en litros a 90km/h
+  - `cons120`: Consumo en litros a 120km/h
+  - `consurb`: Consumo en ciudad
+  - `velocida`: Velocidad máxima
+  - `acelerac`: Aceleración de 0 a 100 km/h
+  - `acl2`: Clasificación de los vehículos según su aceleración, siendo:
+    - **1**: Menor a 10 segundos
+    - **2**: Mayor a 10 segundos
+
+***
+***
+
+## ACONDICIONAMIENTO DEL DATASET
+
+[//]: En este apartado preparamos el dataset para su posterior trabajo, de manera que trataremos los NaN, los formatos de las variables...
+
+### Data wrangling
+
+```{r nulls}
+
+  # Total de nulos en nuestro dataset
+sum(is.na(raw_data))
+
+  # Nulos por columnas
+colSums(is.na(raw_data))
+
+```
+
+[//]:Comenzaremos con el trato de los NaN, en nuestro caso tenemos 83 valores nulos, de los cuales contamos con una columna con muchos valores nulos, sin embargo, no nos aporta gran información ya que tenemos la variable `acel2` la cual indica si la aceleración es menor a 10 segundos es *1*, mientras que si es superior es *2*. También tenemos dos casos en los que no tenemos el peso del vehículo, se trata del FORD (4) Maverick 2.7 TD GL 3 y el Maverick 2.7 TD GLS, podemos imputar estos dos nulos por el peso medio de los modelos similares. Además, ciertos vehículos de SUZUKI y TATA no tienen la velocidad máxima. Por último, encontramos varios vehículos que no presentan los consumos, en este caso también sustuiremos los valores por vehículos similares.
+
+[//]: Comenzamos con los pesos:
+
+```{r impute weights, include = FALSE}
+
+  # Comenzamos completando el peso de los FORD, buscando la información por internet: 
+    # https://www.tempolomotor.com/ficha-tecnica/ford/maverick/2.7_td_gl_(3_dr)_(125_hp)
+    # https://www.cochesyconcesionarios.com/fichas/ford/maverick/1526970002.html
+    
+raw_data[7, 8] <- 1745
+raw_data[8, 8] <- 1875
+
+```
+
+
+[//]: Continuamos con los consumos:
+
+```{r impute consumption}
+
+  # En el caso de los consumos, buscaremos coches de características similares y les imputaremos la media de estos:
+
+# ASIA MOTOR ROCSTA
+    # Comenzamos estableciendo unos baremos, de manera que seleccionaremos aquellos coches con un peso inferior a 1400 y con una potencia por debajo de 90cv, con una cilindrada comprendida inferior a 2300cc
+
+similares <- raw_data[((raw_data$peso <= 1400) & 
+                         (raw_data$potencia <= 90) & 
+                         (raw_data$cc <= 2300)),]
+    
+    # Seleccionamos los datos de los coches que vamos a imputar los datos, así como el consumo que queremos cambiar
+raw_data[((raw_data$peso == 1220) & (raw_data$potencia == 85) & (raw_data$cc == 1789)), 11] = mean(similares$cons120,na.rm = TRUE)
+raw_data[((raw_data$peso == 1270) & (raw_data$potencia == 72) & (raw_data$cc == 2184)), 11] = mean(similares$cons120,na.rm = TRUE)
+
+# ----------------------------------------------------------------------------------------------------------------------------------
+
+# JEEP CHEROKEE
+
+  # En este caso le imputamos los datos del otro Chereokee con la misma motorización
+raw_data[19, 11] <- 10.500000
+raw_data[19, 12] <- 9.80
+
+# ----------------------------------------------------------------------------------------------------------------------------------
+
+# LADA NIVA
+
+similares <- raw_data[((raw_data$peso <= 1200) & 
+                         (raw_data$potencia <= 80) & 
+                         (raw_data$cc <= 2000)),]
+
+    # Seleccionamos los datos de los coches que vamos a imputar los datos, así como el consumo que queremos cambiar
+raw_data[((raw_data$peso == 1180) & (raw_data$potencia == 64) & (raw_data$cc == 1905)), 11] = mean(similares$cons120,na.rm = TRUE)
+
+# ----------------------------------------------------------------------------------------------------------------------------------
+
+# kIA KORANDO
+
+similares <- raw_data[((raw_data$peso <= 1400) & (raw_data$peso <= 1600) &
+                         (raw_data$potencia <= 80) & 
+                         (raw_data$cc <= 2000) & (raw_data$cc <= 2400)),]
+
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 68) & (raw_data$cc == 2238)), 10] = mean(similares$cons90,na.rm = TRUE)
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 68) & (raw_data$cc == 2238)), 11] = mean(similares$cons120,na.rm = TRUE)
+
+# ----------------------------------------------------------------------------------------------------------------------------------
+
+# TOYOTA RAV4
+
+  # En este caso le imputamos los datos del otro Rav4 con la misma motorización
+raw_data[116, 12] <- 10.40
+
+
+# ----------------------------------------------------------------------------------------------------------------------------------
+
+# NISSAN PATROL
+
+similares <- raw_data[((raw_data$peso >= 1840) & (raw_data$peso <= 1870) & 
+                              (raw_data$potencia >= 90) & (raw_data$potencia <= 100) & 
+                              (raw_data$cc >= 2500) & (raw_data$cc <= 3000)),]
+
+    # Seleccionamos los datos de los coches que vamos a imputar los datos, así como el consumo que queremos cambiar
+raw_data[((raw_data$peso == 1850) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 10] = mean(similares$cons90,na.rm = TRUE)
+raw_data[((raw_data$peso == 1860) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 10] = mean(similares$cons90,na.rm = TRUE)
+raw_data[((raw_data$peso == 1850) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 11] = mean(similares$cons120,na.rm = TRUE)
+raw_data[((raw_data$peso == 1860) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 11] = mean(similares$cons120,na.rm = TRUE)
+raw_data[((raw_data$peso == 1850) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 12] = mean(similares$consurb,na.rm = TRUE)
+raw_data[((raw_data$peso == 1860) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 12] = mean(similares$consurb,na.rm = TRUE)
+
+
+  # Para afinar más, creamos una nueva categoría porque hay dos Patrol con mayor peso, por lo que deben consumir más...
+similares <- raw_data[((raw_data$peso >= 1900) & (raw_data$peso <= 2200) & 
+                              (raw_data$potencia >= 90) & (raw_data$potencia <= 115) & 
+                              (raw_data$cc >= 2500) & (raw_data$cc <= 3000)),]
+
+  # Seleccionamos los patrol e imputamos con la media de los similares
+raw_data[((raw_data$peso == 1985) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 10] = mean(similares$cons90,na.rm = TRUE)
+raw_data[((raw_data$peso == 2020) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 10] = mean(similares$cons90,na.rm = TRUE)
+raw_data[((raw_data$peso == 1985) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 11] = mean(similares$cons120,na.rm = TRUE)
+raw_data[((raw_data$peso == 2020) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 11] = mean(similares$cons120,na.rm = TRUE)
+raw_data[((raw_data$peso == 1985) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 12] = mean(similares$consurb,na.rm = TRUE)
+raw_data[((raw_data$peso == 2020) & (raw_data$potencia == 95) & (raw_data$cc == 2826)), 12] = mean(similares$consurb,na.rm = TRUE)
+
+
+# ----------------------------------------------------------------------------------------------------------------------------------
+
+# UAZ
+
+similares <- raw_data[((raw_data$peso >= 1400) & (raw_data$peso <= 1700) & 
+                         (raw_data$potencia <= 90) & 
+                         (raw_data$cc >= 2200) & (raw_data$cc <= 2700)),]
+
+
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 76) & (raw_data$cc == 2498)), 10] = mean(similares$cons90,na.rm = TRUE)
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 76) & (raw_data$cc == 2498)), 10] = mean(similares$cons90,na.rm = TRUE)
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 76) & (raw_data$cc == 2498)), 10] = mean(similares$cons90,na.rm = TRUE)
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 76) & (raw_data$cc == 2498)), 10] = mean(similares$cons90,na.rm = TRUE)
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 76) & (raw_data$cc == 2498)), 11] = mean(similares$cons120,na.rm = TRUE)
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 76) & (raw_data$cc == 2498)), 11] = mean(similares$cons120,na.rm = TRUE)
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 76) & (raw_data$cc == 2498)), 11] = mean(similares$cons120,na.rm = TRUE)
+raw_data[((raw_data$peso == 1590) & (raw_data$potencia == 76) & (raw_data$cc == 2498)), 11] = mean(similares$cons120,na.rm = TRUE)
+
+```
+
+
+[//]: Seguimos con la máxima velocidad
+
+```{r impute max speed}
+
+  # Tenemos dos Suzuki Vitara que no tienen la máxima velocidad y un Tata TelcoLine pick-up que tampoco la tiene, como existen modelos similares, imputaremos el valor de los modelos que tienen la misma motorización:
+
+  # Suzuki
+raw_data[105, 13] <- 144
+raw_data[106, 13] <- 144
+
+  # Tata
+raw_data[114, 13] <- 135
+
+```
+
+[//]: Finalizamos con la aceleración.
+
+```{r drop acc}
+
+  # Como la tenemos la columna acel2, la cula nos inidica si acelera en menos de 10 segundos, suprimiremos la columna acelerac...
+
+data <- select(raw_data, -c(acelerac))
+
+```
+
+[//]: Volvemos a comprobar que no tenemos ningún NaN:
+
+```{r recalculate nulls}
+
+  # Total de nulos en nuestro nuevo dataset
+sum(is.na(data))
+
+```
+
+[//]: Dejamos con dos decimales los consumos...
+
+```{r dec}
+
+data %<>% mutate_at(vars(starts_with("cons")), funs(round(., 2)))
+
+```
+
+[//]: Por último, comprobamos que está bien.
+
+```{r data check}
+
+head(data, 10)
+
+```
+
+
+
+***
+***
+
+## EDA
+
+A continuación, realizaremos un análisis exploratorio de la base de datos para comprender mejor los datos.
+
+```{r skim}
+
+  # Para ello comenzaremos con un análisis de los estadísticos principales
+skim(data)
+
+```
+
+Al realizar un resumen de los estadísticos principales podemos sacar las siguientes conclusiones:
+
+- *Precio*: Son coches con un precio medio de 4.004.459 ptas, con una desviación de 1.936.691 ptas, por lo que los precios estarán comprendidos entre los 2 y 6 millones de ptas.
+- *Motor*: La mayoría de vehículos montan motorizaciones comprendidas entre los 120 y 80 cv, con motores de 4 cilindros y cilindradas comprendidas entre los 2.000 y 3.000 centímetros cúbicos.
+- *Capacidad*: Debido a que la mayoría de estos vehículos tienen 5 plazas, aunque algunos de ellos llegan hasta las 7 y ser vehículos pesados (ya que suelen superar la tonelada y media), los consumos consumos son relativamente elevados, hablamos de 12,5 l/100km en ciudad, y casi 9 litros por cada 100km en carretera.
+
+***
+
+### Box-plot
+
+Para comprender mejor las conclusiones extraidas anteriormente, realizaremos unos diagramas de cajas de las variables numéricas.
+
+```{r box plot, include = TRUE, fig.height = 6, fig.width = 6}
+  
+  # Comenzamos creandonos una base de datos solo con las variables numéricas
+data_num <- select_if(data, is.numeric)
+
+  # Nos generamos una cuadrícula 2x3
+par(mfrow = c(2, 3))
+
+  # Hacemos un loop para que nos haga los 6  primeros gráficos
+sapply(seq(1, 6), 
+       function(j)
+         boxplot(data_num[,j], 
+              main = colnames(data_num)[j], 
+              xlab = "", col = "tomato2") 
+)
+
+  # Repetimos el proceso para los 5 últimos
+par(mfrow = c(2, 3))
+
+sapply(seq(7, 11), 
+       function(j)
+         boxplot(data_num[,j], 
+              main = colnames(data_num)[j], 
+              xlab = "", col = "tomato2")
+)
+
+```
+
+***
+
+### Gráficos de dispersión
+
+Vamos a estudiar los consumos de los vehículos en función de su peso
+
+```{r plot weight-consume, include = TRUE, fig.height = 5, fig.width = 7}
+
+ggplot(data = data, aes(x = peso)) +
+  geom_point(aes(y = consurb), col = "tomato2") +
+  geom_point(aes(y = cons120), col = "steelblue") +
+  geom_point(aes(y = cons90), col = "springgreen3") +
+  labs(title = "Consumo en función del peso", x = "Peso (kg)", y = "Consumo (l)")
+
+```
+
+En el gráfico superior tenemos representados los consumos en función del peso. En rojo tenemos el consumo urbano, en verde el consumo a 90km/h, mientras que en azul tenemos en consumo a 120km/h, como habíamos comentado están correlacionadas las variables peso y consumo, ya que a más peso mayor consumo. Por lo que, el peso puede ser una buena variable clasificadora para los vehículos. Además, el consumo a 120km/h parace que se encuentra en la media entre el consumo a 90km/h y el consumo urbano, por lo que será un buen indicador del consumo medio.
+
+***
+
+### Correlaciones
+
+```{r correlation matrix, include = TRUE, fig.height = 5, fig.width = 5}
+
+  # Obtenemos la matriz de correlaciones obviando la primera fila, que es la correspondiente a la situación laboral
+cor_matrix <- cor(data_num)
+
+  # Con la función corrplot dibujamos las correlaciones, hemos utilizado el método "color" para realizar un heatmap, lo relativo a tl.__ es para modificar el texto.
+corrplot(corr = cor_matrix, type = "lower", order = "original", method = "color", 
+                   tl.col = "black", tl.cex = 1, tl.srt = 45)
+
+```
+
+Existen altas correlaciones entre los cc, la potencia y el número de cilindros, esto tiene sentido, ya que un vehículo de alta potencia suele estar asociado a motores de alto cubicaje y mayor número de cilindros, al tener mayor cubicaje el motor puede llevar a que el peso del vehículo aumente, esto produce que los consumos sean más elevados al igual que la velocidad máxima. Por lo tanto, podemos seleccionar la potencia del vehículo como componente explicador de los atributos del motor.
+
+Por último, observamos que el número de plazas está bastante incorrelacionado con el resto de variables, salvo el peso, por lo que podría ser un buen atributo a la hora de clasificar los vehículos.
+
+
+***
+***
+
+## CONCLUSIONES
+
+Tras realizar el análisis exploratorio podemos concluir que los vehículos que ha adquirido el dueño del *family office* son las siguientes:
+
+- Se trata de vehículos con un rango de precio entre los 2 y 6 millones de pesetas.
+
+- Son vehículos con potencias comprendidas entre los 70 y 120cv, con motores de 4 cilindros en su mayoría y un cubicaje comprendido entre los 2.000 y 3.000 cc.
+
+- Estos todoterrenos son pesados, ya que en media superan la tonelada y media. Además, la mayoría, presentan una capacidad de 5 plazas, llegando hasta las 9, lo que hace que la mayoría de ellos tengan una aceleración superior a los 10 segundos y baja velocidad punta.
+
+- Son vehículos poco eficientes, ya que los consumos son bastantes elevados.
+
+En cuanto a las variables que consideramos interesantes a la hora de clasificar los vehículos son:
+
+- `pvp`: Nos ayuda a obtener una idea de la gama del vehículo (alta, media o baja)
+
+- `potencia`: Nos engloba todas las características relacionadas con el motor (cc, número de cilindros, aceleración y velocidad punta)
+
+- `cons120`: Tras analizar los consumos, podemos observar como el consumo en autovía es una buena medida para estimar el consumo medio de los TT, ya que se encuentra entre el consumo a 90km/h y el consumo urbano.
+
+- `plazas`: El número de plazas nos ayuda a entender la usabilidad del vehículo, así como características interesantes que nos están comprendidos en los datos pero que se pueden deducir con el número de plazas como el tamaño del vehículo.
+
+
