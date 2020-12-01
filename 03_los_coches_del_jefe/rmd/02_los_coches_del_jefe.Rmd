@@ -1,0 +1,326 @@
+---
+title: "Los Coches del Jefe"
+subtitle: "División de la colección"
+author: "Jose López"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(knitr::opts_chunk$set(echo = FALSE, dpi = 500, fig.align = "center", include = FALSE))
+```
+
+[//]: Librerías
+
+```{r Libraries, include = FALSE}
+
+library(here) # comment [//]:
+library(readr) # importar csv
+library(dplyr)
+library(tidyverse)
+library(magrittr) # %<>% 
+library(clustertend) # estadístico Hopkins
+library(ggplot2) # best plots
+library(skimr) # best summaries
+library(corrplot) # correlation plots
+library(factoextra)
+library(cluster) # clusters
+library(NbClust) # opticlusters
+
+```
+
+## *ABSTRACT*
+El objetivo del siguiente trabajo es dividir la colección de los coches del jefe. de manera que seamos capaces de distribuirlos en las 10 residencias. Para ello, estudiaremos sus características con el fin de segmentarlos en base a las mismas, teniendo como restricción un máximo de 15 vehículos por vivienda.
+
+***
+***
+
+## PLANTEAMIENTO
+
+Su jefe tiene una semana complicada y le ha pedido que le haga una propuesta de cómo repartir la colección en las distintas residencias. Como ud. bien sabe, podría repartirlos como máximo en las diez que posee en la actualidad (precisamente está, durante esta semana, cerrando la venta de alguna de ellas, que quizá sustituya por alguna otra), pero, siendo una opción conservadora, quizá no sea la más adecuada, atendiendo a las características que ud. ya conoce de los vehículos.
+
+Así pues, su tarea es relativamente sencilla: estudiar el número adecuado de grupos en los que dividir la colección. El número máximo que puede alojar cualquier residencia es de 15 coches, pero eso no significa que los grupos sean de máximo 15 coches; en caso de proponer grupos con más coches, deberá escoger las residencias en las que guardarlos, atendiendo a un criterio de distancia.
+
+El criterio de reparto debe ser consistente, y debe justificar su decisión en un máximo de 4 páginas.
+
+! [Mapa](../references/map.png)
+*Continuará*.
+
+***
+***
+
+## BASE DE DATOS
+
+[//]: Importaremos la base de datos que modificamos en el archivo `01_los_coches_del_jefe.Rmd`
+
+```{r load data}
+
+raw_data <- read_csv("../data/02_intermediate/TTERRENO_MOD.csv")
+
+```
+
+[//]: Eliminamos la columna `X1` y cambiamos los tipos de columnas correspondientes
+
+```{r type columns}
+
+  # Eliminamos la columna X1
+raw_data %<>% select(!(X1))
+
+  # Pasamos a factor las siguientes columnas
+raw_data$marca <- as.factor(raw_data$marca)
+raw_data$acel2 <- as.factor(raw_data$acel2)
+raw_data$cilindro <- as.factor(raw_data$cilindro)
+raw_data$plazas <- as.factor(raw_data$plazas)
+
+```
+
+[//]: Comprobamos los cambios...
+
+```{r view data}
+
+  # Estructura del dataset
+str(raw_data)
+
+  # Visualizamos el dataset
+head(raw_data, 10)
+tail(raw_data, 10)
+
+  # Dimensión de la base de datos
+dim(raw_data)
+
+```
+
+[//]: Una vez tenemos listo el dataset, cambiamos su nombre para trabajar más cómodamente con él.
+
+```{r data name}
+
+data <- raw_data
+
+```
+
+***
+***
+
+## SELECCIÓN DEL NÚMERO ÓPTIMO DE GRUPOS
+
+Durante este informe el objetivo es ser capaces de de segmentar los coches en grupos de máximo 15 vehículos para distribuirlos en 10 viviendas. Para ello, comenzaremos escalando los datos, continuaremos analizando la idoneidad de los clusters, a través del estadístico de Hopkins y métodos visuales y, por último, calcularemos el número óptimo de clusters con distintos algoritmos.
+
+### Escalamiento de los datos
+
+[//]: Para realizar un análisis cluster es necesario escalar las variables, no lo podemos hacer de manera tradicional, utilizando la función `scale()` porque las variables han de ser numéricas, por lo tanto, realizaremos lo siguiente:
+
+```{r scale}
+
+  # Escalamos las variables numéricas, para ello utilizamos la librería dplyr
+data %<>%
+    mutate_if(is.numeric, scale)
+
+```
+
+[//]: Una vez tenemos las variables escaladas, podemos comenzar a trabajar...
+
+***
+
+### Métodos de evaluación de la bondad del análisis cluster
+
+#### Estadístico Hopkins
+
+[//]: Se trata de un contraste frente a la estructura aleatoria a través de una distribución uniforme del espacio de datos; la idea es contrastar una hipótesis de distribución uniforme / aleatoria de los datos frente a alternativa (que no lo sea); de aceptarse la hipótesis nula, no existirían grupos de observaciones interesantes el conjunto analizado.
+
+[//]: Valores próximos a 0.5 señalan promedios de distancias entre vecinos los más próximos muy similares, haciendo irreal e inoperante el agrupamiento; por el contrario, valores próximos a 0 permitirían rechazar la hipótesis de aleatoriedad y avalarían la presencia de dos o más clusters en el conjunto de observaciones. Para calcular el estadístico de Hopkins procedemos como sigue, a partir del paquete `clustertend`:
+
+```{r hopkins test}
+
+# Seleccionamos las variables numéricas
+
+data_num <- data %>%
+  select_if(is.numeric)
+
+  # Aplicamos una semilla para la reproducibilidad del test
+set.seed(30112020)
+
+  # Realizamos el test
+hopkins(data = data_num, n = nrow(data_num)-1)
+
+```
+Tras realizar el cálculo del estadístico de hopkins, podemos rechazar la hipótesis de aleatoriedad por lo que avalamos la existencia de dos o más clusters en el conjunto de observaciones, es decir, existen distancias considerables entre los vecinos, por lo que podemos continuar con nuestro análisis.
+
+#### Método VAT de evaluación visual
+
+[//]: El método VAT (*Virtual Assessment of cluster Tendency*) permite inspeccionar visualmente la posibilidad de agrupamiento de los datos analizados. Para ello, plotearemos distintas metodologías...
+
+```{r pearson distance, include = TRUE}
+
+  # Calculamos las distancias con el método de pearson. IMPORTANTE <- el dataset solo puede contener valores numéricos
+q.dist = get_dist(data_num, method = "pearson")
+
+  # Ploteamos
+fviz_dist(q.dist, lab_size = 4, gradient = list(low = "steelblue1", mid = "white", high = "tomato1")) +
+  labs(title = "Matriz de distancias", subtitle = "Pearson")
+
+```
+
+El gráfico superior representa de manera gráfica la distancia entre los grupos, cuando es azul implica poca distancia entre las observaciones, mientras que si es rojo implica más distancia. En este caso no encontramos gran información, pero si podemos observar cómo existen grupos de observaciones claramente diferenciadas.
+
+```{r manhattan distance}
+
+  # Calculamos las distancias con el método de pearson. IMPORTANTE <- el dataset solo puede contener valores numéricos
+q.dist = get_dist(data_num, method = "manhattan")
+
+  # Ploteamos
+fviz_dist(q.dist, lab_size = 4, gradient = list(low = "steelblue1", mid = "white", high = "tomato1")) +
+  labs(title = "Matriz de distancias", subtitle = "Manhattan")
+
+```
+
+```{r minkowski distance}
+
+  # Calculamos las distancias con el método de pearson. IMPORTANTE <- el dataset solo puede contener valores numéricos
+q.dist = get_dist(data_num, method = "minkowski")
+
+  # Ploteamos
+fviz_dist(q.dist, lab_size = 4, gradient = list(low = "steelblue1", mid = "white", high = "tomato1")) +
+  labs(title = "Matriz de distancias", subtitle = "Minkowski")
+
+```
+
+Otra manera de visualizar los grupos es mediante un dendrograma:
+
+```{r dendrogram, include = TRUE}
+
+  # Realizamos un dendrograma de los coches del jefe con 10 grupos
+fviz_dend(hclust(dist(data_num)), k = 10, cex = 0.5, 
+          main = "Dendrograma", 
+          ylab = "Altura", 
+          xlab = "Análisis cluster aplicando Ward D2")
+
+```
+
+En el gráfico superior, hemos ploteado un dendrograma de los vehículos clasificándolos en 10 grupos, siendo este el número máximo de grupos que podemos realizar. Aún así, esto no implica que sea el óptimo, es por ello que realizaremos a continuación el cálculo del número óptimo de grupos.
+
+***
+
+### Determinación del número óptimo de clusters
+
+[//]: La determinación del número óptimo de clusters es uno de los principales problemas en el análisis de nuestros datos. Un exceso de grupos puede resultar en una granularidad que no aporta mayor interés y, sobre todo, que puede resultar excesivamente cara a la hora de implementarlo en la práctica con clientes o en investigación; por otro lado, siendo mucho más económico un número reducido, el impacto real en el grupo puede ser muy pequeño debido a la gran diversidad de características que lo identifican. Para resolver este problema, desde 2014 está disponible en `R` el paquete `NBclust` que proporciona 30 índices para determinar ese número, en una única línea de código.
+
+```{r nbclust}
+
+  # Aplicamos una semilla para la reproducibilidad
+set.seed(30112020)
+
+  # Aplicamos la función, seleccionando la distancia euclidea, un mínimo de 2 cluster y un máximo de 10
+clusters_opt <- NbClust(data = data_num, distance = "euclidean", min.nc = 2, max.nc = 10, method = "complete", index = "all")
+
+```
+
+```{r plot opt clusters, include = TRUE}
+
+  # Ploteamos el número óptimo de clusters
+fviz_nbclust(clusters_opt, barcolor = "sienna3", barfill = "orange2") + 
+  theme_grey() + 
+  labs(title = "Número óptimo de clusters = 3", x = "Número k de clusters", y = "Frecuencia")
+
+```
+
+Tras realizar el análisis obtenemos que el número idóneo de clusters es 3, sin embargo, esto presenta un inconveniente, ya que si dividimos los 125 vehículos en 3 grupos nos sería imposible almacenarlos en los 10 garajes del jefe, ya que la máxima capacidad que poseen es de 15 vehículos por vivienda. Es por ello, por lo que probaremos a graficar los clusters.
+
+***
+
+
+#### K = 3
+
+
+```{r kmeans 3 clusters}
+
+  # Establecemos una semilla
+set.seed(30112020)
+
+  # Ploteamos los clusters
+fviz_silhouette(eclust(data_num, FUNcluster = "kmeans", stand = TRUE, hc_metric = "euclidean", nstart = 25, k = 3))
+
+```
+
+
+```{r pam 3 clusters}
+
+  # Establecemos una semilla
+set.seed(30112020)
+
+  # Ploteamos los clusters
+fviz_silhouette(eclust(data_num, FUNcluster = "pam", stand = TRUE, hc_metric = "euclidean", k = 3))
+
+```
+
+```{r hclust 3 clusters}
+
+  # Establecemos una semilla
+set.seed(30112020)
+
+  # Ploteamos la silueta y la distribución de los grupos
+fviz_silhouette(eclust(data_num, FUNcluster = "hclust", stand = TRUE, hc_metric = "euclidean", k = 3))
+
+  # Ploteamos los clusters
+fviz_cluster(eclust(data_num, FUNcluster = "hclust", stand = TRUE, hc_metric = "euclidean", k = 3))
+
+```
+
+Si elegimos 3 grupos salen bien diferenciados y no se producen solapamientos, el inconveniente es que dada la ubicación de las viviendas no consideramos correcto esta segmentación para la situación que nos acontece. Estudiando el mapa de las residencias, podemos observar 5 o 6 zonas donde están distribuidas las viviendas: París, La Rochelle, Suiza, Pirineos y Niza, es por ello, por lo que podríamos clasificar los vehículos en 5 grupos.
+
+***
+
+#### K = 5
+
+
+```{r kmeans 5 clusters, include = TRUE}
+
+  # Establecemos la semilla
+set.seed(30112020)
+
+  # Ploteamos los clusters
+fviz_silhouette(eclust(data_num, FUNcluster = "kmeans", stand = TRUE, hc_metric = "euclidean", nstart = 25, k = 5))
+
+```
+
+```{r pam 5 clusters}
+
+  # Establecemos la semilla
+set.seed(30112020)
+
+  # Ploteamos los clusters
+fviz_silhouette(eclust(data_num, FUNcluster = "pam", stand = TRUE, hc_metric = "euclidean", k = 5))
+
+```
+
+```{r hclust 5 clusters}
+
+  # Establecemos la semilla
+set.seed(30112020)
+
+  # Ploteamos la silueta y la distribución en los grupos
+fviz_silhouette(eclust(data_num, FUNcluster = "hclust", stand = TRUE, hc_metric = "euclidean", k = 5))
+
+  # Ploteamos los clusters
+fviz_cluster(eclust(data_num, FUNcluster = "hclust", stand = TRUE, hc_metric = "euclidean", k = 5))
+
+```
+
+[//]: Como podemos observar, no existe solapamiento en los grupos (salvo en el jerárquico), por lo que establecemos 5 el número óptimo de grupos.
+
+***
+***
+
+## CONCLUSIONES
+
+Tras haber realizado analizado el número óptimo de clusters para la colección de 125 TT de nuestro jefe, rechazamos el número óptimo calculado, es decir, 3 grupos, ya que al tener 10 viviendas tan separadas nos imposibilita la tarea de clasificarlos en los garajes de manera óptima. Es por ello, y tras estudiar la ubicación de las viviendas en el mapa otorgado, que establecemos el número óptimo de grupos en 5, los cuales se distribuirán de la siguiente manera:
+
+- **Grupo 1**: 16 vehículos. Distribuidos en la Rochelle. El vehículo que cabe en este garaje pasaría a Córcega, ya que se asemeja a los vehículos del quinto grupo.
+
+- **Grupo 2**: 45 vehículos. Distribuidos en los 3 garajes de la zona de Mónaco-Niza.
+
+- **Grupo 3**: 20 vehículos. Distribuidos en los garajes de Suiza.
+
+- **Grupo 4**: 25 vehículos. Distribuidos en los dos garajes de París
+
+- **Grupo 5**: 19 vehículos. Dado que algunos se asemejan a los del grupo 2, recomendarías que fuesen a Córcega y el resto a Pirineos.
+

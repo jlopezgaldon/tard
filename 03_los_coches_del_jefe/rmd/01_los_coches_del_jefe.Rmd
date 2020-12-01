@@ -312,7 +312,14 @@ head(data, 10)
 
 ```
 
+[//]: Podemos guardar la base de datos modificada, para trabajar posteriormente:
 
+```{r save new data}
+
+  # Para ello, utilizaremos la función "write.csv()" que nos guardará los decimales con "." y separará por ","
+write.csv(data, file = "TTERRENO_MOD.csv")
+
+```
 
 ***
 ***
