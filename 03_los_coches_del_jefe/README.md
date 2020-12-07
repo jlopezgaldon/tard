@@ -26,6 +26,11 @@ El criterio de reparto debe ser consistente, y debe justificar su decisión en u
 
 ***
 
+##### PARTE 3
+Finalmente, después de haber solucionado los problemas de selección de variables y tratamiento de valores perdidos, debe proceder a asignar los coches a las viviendas de su jefe. En un máximo de cuatro páginas, indique de qué forma va a proceder y cuáles son las características tanto de los grupos que ha creado como de los vehículos que asigna a cada vivenda.
+
+***
+
 ### Structure
 
 - README.md <- The top-level README for developers.

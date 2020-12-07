@@ -1,0 +1,439 @@
+---
+title: "Los Coches del Jefe"
+subtitle: "La asignación"
+author: "Jose López"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(knitr::opts_chunk$set(echo = FALSE, dpi = 500, fig.align = "center", include = FALSE))
+```
+
+[//]: Librerías
+
+```{r Libraries, include = FALSE}
+
+library(here) # comment [//]:
+library(readr) # importar csv
+library(dplyr)
+library(tidyverse)
+library(magrittr) # %<>% 
+library(ggplot2) # best plots
+library(factoextra)
+library(cluster) # clusters
+library(e1071)
+
+```
+
+## *ABSTRACT*
+
+En el siguiente informe continuaremos con el trabajo realizado anteriormente, recordemos que trabajamos sobre una base de datos con los 125 todoterrenos de nuestro jefe, el objetivo es segmentarlos en diversos grupos para distribuirlos en las 10 viviendas que tiene. Para ello, en el primer informe estudiamos los vehículos y solventamos problemas que presentaba la base de datos como el tratamiento de nulos; en el segundo estudiamos el número óptimo de grupos, determinando que este era 5; y, por último, en este informe trataremos el método de segmentación más óptimo estudiando la silueta, una vez tengamos el mejor método, analizaremos los distintos grupos de coches que hemos generado así como sus principales características y por qué los distribuimos en cada vivienda.
+
+***
+***
+
+## PLANTEAMIENTO
+
+Finalmente, después de haber solucionado los problemas de selección de variables y tratamiento de valores perdidos, debe proceder a asignar los coches a las viviendas de su jefe. En un máximo de cuatro páginas, indique de qué forma va a proceder y cuáles son las características tanto de los grupos que ha creado como de los vehículos que asigna a cada vivienda. 
+
+***
+***
+
+## BASE DE DATOS
+
+[//]: Importaremos la base de datos que modificamos en el archivo `01_los_coches_del_jefe.Rmd`
+
+```{r load data}
+
+raw_data <- read_csv("../data/02_intermediate/TTERRENO_MOD.csv")
+
+```
+
+[//]: Eliminamos la columna `X1` y cambiamos los tipos de columnas correspondientes
+
+```{r type columns}
+
+  # Eliminamos la columna X1
+raw_data %<>% select(!(X1))
+
+  # Pasamos a factor las siguientes columnas
+raw_data$marca <- as.factor(raw_data$marca)
+raw_data$acel2 <- as.factor(raw_data$acel2)
+raw_data$cilindro <- as.factor(raw_data$cilindro)
+raw_data$plazas <- as.factor(raw_data$plazas)
+
+```
+
+[//]: Comprobamos los cambios...
+
+```{r view data}
+
+  # Estructura del dataset
+str(raw_data)
+
+  # Visualizamos el dataset
+head(raw_data, 10)
+tail(raw_data, 10)
+
+  # Dimensión de la base de datos
+dim(raw_data)
+
+```
+
+[//]: Una vez tenemos listo el dataset, cambiamos su nombre para trabajar más cómodamente con él.
+
+```{r data name}
+
+data <- raw_data
+
+```
+
+***
+***
+
+## SEGMENTACIÓN DE LOS TT
+
+Durante este proceso debemos obtener el mejor método para clasificar la colección de coches, recordemos que en el anterior informe determinamos que el número óptimo de vehículos es 5. Como sabemos, existen diversas metodologías para clasificar los grupos (jerárquicos aglomerativos, jerárquicos divisivos y no jerárquicos) es por ello que los estudiaremos y seleccionaremos el que mejor silueta obtenga.
+
+### Escalamiento de los datos
+
+[//]: Para realizar un análisis cluster es necesario escalar las variables, no lo podemos hacer de manera tradicional, utilizando la función `scale()` porque las variables han de ser numéricas, por lo tanto, realizaremos lo siguiente:
+
+```{r scale}
+
+  # Escalamos las variables numéricas, para ello utilizamos la librería dplyr
+data %<>%
+    mutate_if(is.numeric, scale)
+
+  # Comprobamos los datos
+head(data, 10)
+
+```
+
+[//]: Una vez tenemos las variables escaladas, podemos comenzar a trabajar...
+
+***
+
+### MÉTODOS NO JERÁRQUICOS
+
+[//]: Procedimientos `k medias`, `pam`, `clara`, `fanny` entre otros:
+
+[//]: - Requieren la determinación a priori del número de grupos;
+
+[//]: - Necesitan de una semilla / grupo inicial;
+
+[//]: - Muchos criterios diferentes para optimizar los clusters, algunos basados en modelos;
+
+[//]: - Pueden construir diferentes grupos de *outliers*.
+
+En nuestro informe solo compararemos los métodos no jerárquicos, dado que conocemos de antemano el número de grupos y no nos interesa formar grandes grupos como si realizan los métodos jerárquicos.
+
+
+#### K-MEANS
+
+```{r kmeans 5 clusters}
+
+  # Seleccionamos los datos numericos
+data_num <- data %>%
+  select_if(is.numeric)
+
+  # Establecemos la semilla
+set.seed(08122020)
+
+  # Ploteamos la silueta
+fviz_silhouette(eclust(data_num, FUNcluster = "kmeans", stand = FALSE, hc_metric = "euclidean", nstart = 25, k = 5))
+
+```
+
+[//]: A pesar de tener una buena representación de los clusters con las dos dimensiones, la silueta no es demasiado buena, lo que nos indica que este método será descartado a priori.
+
+***
+
+#### PAM
+
+```{r pam 5 clusters}
+
+  # Establecemos la semilla
+set.seed(08122020)
+
+  # Ploteamos los clusters
+fviz_silhouette(eclust(data_num, FUNcluster = "pam", stand = TRUE, hc_metric = "euclidean", k = 5))
+
+```
+
+[//]: Utilizando un PAM tenemos la misma silueta y la misma clasificación que con kmeans, sin embargo, en este caso el centroide del grupo es uno de los TT lo que supone una ventaja a la hora de interpretar los resultados, por lo que entre kmeans y PAM nos quedaríamos con este último.
+
+***
+
+#### HCLUST
+
+```{r hclust 5 clusters}
+
+  # Establecemos la semilla
+set.seed(08122020)
+
+  # Ploteamos la silueta y la distribución en los grupos
+fviz_silhouette(eclust(data_num, FUNcluster = "hclust", stand = TRUE, hc_metric = "euclidean", k = 5))
+
+  # Ploteamos los clusters
+fviz_cluster(eclust(data_num, FUNcluster = "hclust", stand = TRUE, hc_metric = "euclidean", k = 5))
+
+```
+
+[//]: Al emplear el hclust hemos obtenido una mejora en la metodología, sin embargo, tenemos un grupo muy grande que nos penaliza la silueta y nos dificulta la tarea de distribución. Recordemos que tenemos 10 viviendas y en cada una podemos almacenar un máximo de 10 vehículos, por lo que si tenemos un grupo con 60 vehículos tendríamos que tener 4 viviendas cercanas para poder distribuirlos ahí, en nuestro caso, podríamos resolver este problema, ya que tenemos 3 viviendas en Niza-Mónaco y una cercana situada en la isla de Córcega.
+
+***
+
+#### CLARA
+
+[//]: CLARA es un algoritmo para efectuar análisis cluster sobre grandes conjuntos de varios miles de observaciones; es importante notar que la característica “grande” dependerá tanto de la RAM como de la velocidad de proceso. El algoritmo trabaja en la forma siguiente:
+
+[//]: - División del conjunto original en varios más pequeños de tamaño fijo;
+[//]: - Aplicar el algoritmo PAM en cada nuevo subconjunto escogiendo los k mediodides en cada uno y asignando cada observación del conjunto orginal al medioide más cercano;
+[//]: - Calcular la media o la suma de las disimilaridades de las observaciones respecto de su medioide más cercano, que se empleará como una medida de la bondad de ajuster de la segmentación;
+[//]: - Escoger como solución aquel subconjunto en la que la medida de la disimilaridad es mínima.
+
+```{r clara 5 clusters}
+
+  # Establecemos la semilla
+set.seed(08122020)
+
+ # Aplicamos el algortimo
+coches_clara <- clara(x = data_num, k = 5, sampsize = nrow(data), metric = "euclidean")
+
+  # Ploteamos el cluster
+fviz_cluster(coches_clara)
+
+  # Ploteamos la silueta
+fviz_silhouette(coches_clara)
+
+```
+
+[//]: En este caso, vemos como este método es muy similar a los anteriores en cuento a división de los clusters, sin embargo encontramos un reparto más equitativo en cuanto a los grupos, ya que el grupo que más vehículos tiene es el cuarto con 44, mientras que anteriormente teníamos un grupo con 60.
+
+***
+
+#### FUZZY CLUSTERING
+
+[//]: Como hemos visto, en los métodos de partición como k-medias o PAM cada observación pertenece o no a un grupo, sin alternativa; la segmentación borrosa, por el contrario, asigna a cada observación una probabilidad de pertenencia a cada grupo. Es por ello que recibe el nombre de “segmentación blanda”, frente al de “segmentación dura” que reciben las dos anteriores. En general, las observaciones cercanas al centro de cada grupo tienen una mayor probabilidad de pertenencia al mismo que las que se encuentran en los límites exteriores; mediremos el grado de pertenencia mediante una probabilidad, esto es, un indicador de 0 a 1.
+
+
+```{r fuzzy 5 clusters, include = TRUE}
+
+  # Establecemos la semilla
+set.seed(08122020)
+
+ # Aplicamos el algortimo
+coches_fuzzy <- fanny(x = data_num, k = 5, memb.exp = 1.2, metric = "euclidean")
+
+  # Ploteamos el cluster
+fviz_cluster(coches_fuzzy)
+
+  # Ploteamos la silueta
+fviz_silhouette(coches_fuzzy)
+
+  # Estadístico Dunn
+coches_fuzzy$coeff
+
+  # Probabilidades de pertenecer a los grupos
+coches_fuzzy$membership
+
+```
+
+En algunos casos la clasificación está clara, ya que tenemos probabilidades del 80-90 % de pertenencia a un grupo, sin embargo, otros todoterrenos como el Opel Monterey 3.1 TD 3p podría pertenecer al grupo 2 o 4.
+
+***
+
+#### DISTANCIA DE GOWER
+
+Es importante señalar que durante los procedimientos anteriores solo hemos tenido en cuenta las variables numéricas para realizar la clasificación, pero es posible que las categóricas nos expliquen gran parte de la información y no las estemos teniendo en cuenta, es aquí donde entra la distancia de Gower. 
+
+[//]: Se aplica sobre cualquier tipo de variable escalándola de 0 a 1; empleando entonces una combinación lineal ponderaciones específicas del usuario (en general, un promedio), se procede a calcular la matriz de distancias. Se emplean las siguientes métricas:
+
+[//]: - Variables en escala métrica (intervalo): distancia Manhattan normalizada por rangos;
+[//]: - Variables ordinales: Tras ordenar la variable, se emplea la métrica Manhattan con ajuste especial para empates;
+[//]: - Variables nominales: Las variables categóricas se transforman en tantas variables dummy / dicotómicas para emplear después el coeficiente de Sorensen-Dice; siendo A las veces que X e Y coinciden (aparecen simultáneamente), B las veces que aparece Y y no X, C las que aparece X y no Y, y D las que no aparece ninguna,
+
+```{r gower distance}
+
+  # Eliminamos la variable modelo de nuestro dataset, porque no nos interesa
+data_gower <- raw_data %>% select(-modelo)
+
+  # Calculamos la distancia de Gower y escalamos
+dist_gower <- daisy(x = data_gower, metric = "gower", stand = T)
+
+```
+
+[//]: Una vez tenemos la distancia de Gower, volveremos a probar los anteriores métodos para ver si obtenemos mejora:
+
+##### K-MEANS
+
+```{r kmeans gower}
+
+  # Establecemos la semilla
+set.seed(08122020)
+
+  # Ploteamos la silueta
+fviz_silhouette(eclust(dist_gower, FUNcluster = "kmeans", stand = T, nstart = 25, k = 5))
+
+```
+
+[//]: En este caso hemos obtenido una mejor silueta incluyendo las variables categóricas, sin embargo el primer grupo nos penaliza mucho, por lo que seguiremos probando.
+
+##### PAM
+
+```{r pam gower}
+
+  # Establecemos la semilla
+set.seed(08122020)
+
+  # Ploteamos la silueta
+fviz_silhouette(eclust(dist_gower, FUNcluster = "pam", stand = T, k = 5))
+
+```
+
+[//]: Al utilizar PAM con gower ocurre lo mismo que con K-Means, obtenermos una mejor clasificación pero en este caso, el tercer grupo nos penaliza demasiado...
+
+##### HCLUST
+
+```{r hclust gower}
+
+  # Establecemos la semilla
+set.seed(08122020)
+
+  # Ploteamos la silueta
+fviz_silhouette(eclust(dist_gower, FUNcluster = "hclust", stand = T, k = 5))
+
+```
+
+[//]: Con el hclust tenemos una distribución más homogénea de los grupos, lo que nos facilitaría la tare de clasifiacación, sin embargo, la mejora en la silueta es nula, por lo que tenemos que seguir probando con otros métodos.
+
+
+```{r fuzzy gower}
+
+  # Establecemos la semilla
+set.seed(08122020)
+
+ # Aplicamos el algortimo con 200 muestras
+coches_fuzzy_gower <- fanny(x = dist_gower, k = 5, diss = T, memb.exp = 1.3)
+
+  # Ploteamos la silueta
+fviz_silhouette(coches_fuzzy_gower)
+
+  # Estadístico Dunn
+coches_fuzzy_gower$coeff
+
+  # Probabilidades de pertenecer a los grupos
+coches_fuzzy_gower$membership
+
+```
+
+En todas las pruebas realizadas hemos obtenido unos peores resultados al utilizar la distancia de Gower frente a la Euclídea o Manhattan, es por ello que descartamos utilizar las variables categóricas para clasificar la colección de todotterrenos de nuestro jefe.
+
+***
+***
+
+### ANÁLISIS DE LOS GRUPOS
+
+Tras haber estudiado diversas metodologías para clasificar los vehículos, concluimos que el mejor método es la segmentación borrosa (*fuzzy clustering*), ya que obtenemos las probabilidades de pertenecer a un determinado grupo así como la mejor silueta, si bien es cierto, que perdemos la opción de obtener un representante (medioide) de cada grupo, tal y como obtendríamos con un PAM o un CLARA.
+
+[//]: Creamos los grupos...
+
+```{r data groups}
+
+  # Clusters
+Grupos <- coches_fuzzy$clustering
+
+  # Generación del dataset
+data_cluster <- as.data.frame(cbind(Grupos, raw_data))
+
+```
+
+#### Grupo 1:
+
+```{r first group}
+
+  # Seleccionamos el primer grupo
+grupo1 <- data_cluster %>% filter(Grupos == 1)
+
+  # Realizamos un summary
+summary(grupo1)
+
+```
+
+La mayoría de los coches del grupo 1 son Suzukis, se trata de vehículos económicos (un precio por debajo de los dos millones y medio de pesetas) y con motores pequeños, ya que todos tienen 4 cilindros y una cilindrada inferior a los 2000cc, esto hace que sus potencias no sean muy elevadas, hablamos de entre 60 y 95cv, estas características sumadas a su bajo peso (en torno a los 1100kg) hace que sean coches con un bajo consumo (entre 9 y 10 litros de media). Además son coches pequeños, ya que tienen 4 plazas, esto hace que sean ideales para ciudad, ya que consumen poco y al ser pequeños son maniobrables y fáciles de aparcar, por lo que los destinaremos a ciudades.
+
+#### Grupo 2:
+
+```{r second group}
+
+  # Seleccionamos el primer grupo
+grupo2 <- data_cluster %>% filter(Grupos == 2)
+
+  # Realizamos un summary
+summary(grupo2)
+
+```
+
+El segundo grupo está formado por 17 vehículos, la mayoría de estos son Mitsubishi y Jeep. Este grupo está formado por coches bastante costosos, su precio ronda entre los 3 y 9 millones de pesetas, por lo que la horquilla de precios es muy amplia. Se trata de coches potentes, con motores de 6 cilindros en su mayoría y algunos de 8, cilindradas superiores a los 3000cc y en los casos de los V8 alcanzan los 5 litos de cilindrada, esto hace que la potencia media sea superior a los 180cv. Si tenemos en cuenta que se trata de vehículos potentes y pesados, con un peso medio cercano a los dos toneladas, es lógico que su consumo sea elevado, superior a los 14 litros de media. Por lo tanto, este tipo de veículos serán ideales para localizaciones donde no importe el tamaño y sea necesario vehículos potentes, es decir, vehículos destinados única y exclusivamente a circular fuera del asfalto.
+
+#### Grupo 3:
+
+```{r third group}
+
+  # Seleccionamos el primer grupo
+grupo3 <- data_cluster %>% filter(Grupos == 3)
+
+  # Realizamos un summary
+summary(grupo3)
+
+```
+En el grupo 3 tenemos 20 vehículos, la mayoría de ellos son Nissan y Opel. En estos casos encontramos vehículos con un precio medio de 3 millones y medio de pesetas, motores de 4 cilindros con una cilindrada comprendida entre los 2000 y 3000cc, nos ofrecen potencias entre los 100 y 180cv y unos pesos en torno a la tonelada y media. Por lo tanto, el consumo medio es moderado, ya que declaran consumos entre los 10 y 12 litros. Este tipo de vehículos son muy polivalentes, ya que mantienen un consumo contenido (similar al grupo 1), pero ofreciendo buenas prestaciones (como el grupo 2). Por lo tanto, serán ideales para aquellas zonas donde necesitemos circular por ciudad, salir de la ruta y viajar.
+
+#### Grupo 4:
+
+```{r forth group}
+
+  # Seleccionamos el primer grupo
+grupo4 <- data_cluster %>% filter(Grupos == 4)
+
+  # Realizamos un summary
+summary(grupo4)
+
+```
+
+Continuamos con el cuarto grupo, en este tenemos 56 vehículos, entre los cuales encontramos Land Rover, Mitsubishi y Nissan, en su mayoría. Es un grupo similar al anterior, pero con ligeras diferencias que expondremos a continuación, en primer lugar, se trata de vehículos con un precio similar, sin embargo, presentan motores con mayor cilindrada, superior a los 2500cc en media, pero con potencias inferiores, ya que no superan los 140cv, esto sumado a las bajas rpm a las que el motor entrega su máxima potencia nos hace deducir que son coches diesel, a diferencia de los anteriores que eran gasolina, esto hace que sean vehículos con una alta capacidad de empuje, si combinamos esto con sus plazas (entre los 5 y 7 pasajeros en su mayoría) hace que sean vehículos ideales para el transporte de personas o carga.
+
+#### Grupo 5:
+
+```{r fifth group}
+
+  # Seleccionamos el primer grupo
+grupo5 <- data_cluster %>% filter(Grupos == 5)
+
+  # Realizamos un summary
+summary(grupo5)
+
+```
+
+Por último, tenemos el quinto grupo, formado por 6 vehículos, en concreto Mercedes, por lo que se trata de los vehículos más caros de la colección (con precios superiores a los 9 millones de pesetas), motores 6 cilindros con una potencia media de 170cv y pesos elevados, superando las dos toneladas, esto provoca que su consumo sea muy elevado, cercano a los 17 litros, por lo que son vehículos con los cuales no se recomienda viajar.
+
+***
+***
+
+## CONCLUSIONES
+
+En el presente informe hemos determinado la mejor manera de clasificar la colección de 125 vehículos de nuestro jefe, en nuestro caso la segmentación borrosa y hemos analizado cada grupo de vehículos con el objetivo de distribuirlos en las 10 viviendas de la siguiente manera:
+
+ - **Grupo 1**: Vehículos pequeños, ligeros y de bajo consumo, los ubicamos en las dos viviendas de la ciudad de París, ya que será conveniente tener coches que consuman poco y fáciles de aparcar para moverse por la capital.
+ 
+ - **Grupo 2**: Vehículos potentes, de tamaño medio y de altas prestaciones, estos serán ideales para el campo y las montañas dado que será necesario emplear su potencia para salir de la ruta y avanzar por terrenos difíciles, es por ello que los llevamos a Andorra.
+ 
+ - **Grupo 3**: Vehículos polivalentes, es decir, es término medio entre el grupo 1 y 2, ya que se trata de vehículos potentes, pero con un consumo moderado, por lo que serán muy interesantes para circular tanto por campo, ciudad o realizar viajes, es por ello, por lo que los almacenaríamos en los garajes de suiza.
+ 
+ - **Grupo 4**: Se trata de vehículos con grandes capacidades, ya que muchos de ellos tienen más de 5 plazas, por lo que serán muy interesantes para el transporte de mercancía o personas, es por ello que pensamos que lo lógico es destinarlos al lugar donde más viviendas tenemos, es por ello, que estos vehículos se repartirán en las viviendas de la zona de Mónaco y Córcega.
+ 
+ - **Grupo 5**: Por último, tenemos los vehículos de lujo, los mercedes clase G, se trata de vehículos potentes y pesados con los mayores consumos, por lo tanto, deben ser vehículos que no reocrran muchos kilómetros porque elevaría su mantenimiento. Por lo tanto, estos vehículos los mandaríamos a la vivienda de La Rochelle.
+
+
